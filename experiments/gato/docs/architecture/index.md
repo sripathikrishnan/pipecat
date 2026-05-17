@@ -82,8 +82,8 @@ A spiritual successor to pipecat, rewritten in Go for resource efficiency and mu
 
 ### 1. Frame-Based Pipeline
 
-Gato uses discrete **Frame** objects flowing through **FrameProcessor** chains — the same logical
-model as pipecat ([`frame_processor.py`](~/apps/pipecat-ai/pipecat/src/pipecat/processors/frame_processor.py),
+Gato uses discrete **Frame** objects flowing through **FrameProcessor** chains, intentionally
+mirroring pipecat's model ([`frame_processor.py`](~/apps/pipecat-ai/pipecat/src/pipecat/processors/frame_processor.py),
 [`frames.py`](~/apps/pipecat-ai/pipecat/src/pipecat/frames/frames.py)):
 
 - **SystemFrames** (interruption, start, end): bypass the data queue, always immediate
@@ -95,13 +95,16 @@ Go mapping: goroutines replace asyncio tasks; buffered channels replace asyncio 
 `context.Context` cancellation handles in-processor abort. Two goroutines per processor
 (one per priority tier) mirror pipecat's system/data queue split.
 
-**Why not LiveKit Agents' event-streaming model**: LiveKit
-([`agent_session.py`](~/apps/livekit-agents/livekit-agents/livekit/agents/voice/agent_session.py),
-[`events.py`](~/apps/livekit-agents/livekit-agents/livekit/agents/voice/events.py))
-uses named async events (`on_user_speech_committed`, `on_agent_start_speaking`) emitted by a
-central session object. This is simpler for the happy path but makes backpressure, pipeline
-introspection, and interruption propagation implicit and harder to reason about. The frame model
-pays for itself in correctness at the cost of verbosity.
+**Pipecat compatibility goal**: Gato's frame and processor concepts are a deliberate
+transliteration of pipecat into Go — not a port, but a parallel implementation of the same
+model. New frame types, processor patterns, and pipeline behaviors introduced in pipecat
+upstream should map mechanically to Gato equivalents. This keeps the conceptual surface shared
+and reduces the cost of evolving both systems in parallel.
+
+**Explicit conversation state**: The pipeline runner maintains an explicit `ConversationState`
+enum (IDLE / LISTENING / PROCESSING / SPEAKING). State transitions are driven by SystemFrames
+(`InterruptionFrame` → LISTENING, `TurnStartedFrame` → PROCESSING) and are observable via
+metrics and logs without needing to inspect frame flow.
 
 ### 2. VAD + Turn Detection: CGO/ONNX, In-Process
 
@@ -197,7 +200,6 @@ ONNX runtime sessions (thread-safe for inference), HTTP client pools, UDPMux.
 | Multi-node switchboard protocol  | [voqalcloud node proto](~/apps/voqalcloud/switchboard/internal/proto/)                         |
 | VAD integration pattern          | [livekit-agents vad.py](~/apps/livekit-agents/livekit-agents/livekit/agents/vad.py)           |
 | Turn / endpointing               | [livekit-agents endpointing.py](~/apps/livekit-agents/livekit-agents/livekit/agents/voice/endpointing.py) |
-| Event-streaming model (contrast) | [livekit-agents agent_session.py](~/apps/livekit-agents/livekit-agents/livekit/agents/voice/agent_session.py) |
 | STT / TTS plugin pattern         | [pipecat services/](~/apps/pipecat-ai/pipecat/src/pipecat/services/)                         |
 | [HEARD] interruption pattern     | [pipecat-adk interruption.py](~/apps/pipecat-adk/src/pipecat_adk/interruption.py)            |
 
