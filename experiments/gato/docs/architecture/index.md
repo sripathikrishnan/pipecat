@@ -131,6 +131,12 @@ Business → Gato:  TextChunk · EndOfTurn · Interrupt
 Protobuf chosen for: schema enforcement, generated multi-language clients, binary efficiency.
 Reference pattern: [voqalcloud switchboard proto](~/apps/voqalcloud/switchboard/internal/proto/).
 
+The proto schema follows the same structural canvas as pipecat's protobuf frame serializer
+([`src/pipecat/serializers/`](~/apps/pipecat-ai/pipecat/src/pipecat/serializers/)): a top-level
+`Frame` message with a `oneof` payload discriminator, one message type per frame kind. This keeps
+the wire format conceptually aligned with the in-process frame model and avoids a separate
+serialization vocabulary.
+
 The Business Layer SDK (modeled on [voqalcloud/agent-sdk](~/apps/voqalcloud/agent-sdk/)) owns
 conversation context, LLM integration, tool orchestration, and the developer-facing API surface.
 Context aggregation lives entirely in the business layer; Gato owns only the audio-to-turns
@@ -150,7 +156,9 @@ type TTSService interface {
 }
 ```
 
-Hello-world targets: Deepgram streaming WebSocket (STT), ElevenLabs streaming (TTS).
+Initial providers: **Google Cloud STT** (streaming gRPC) and **Google Cloud TTS** (streaming
+synthesis). Chosen for existing API key availability and broad language coverage. Additional
+providers follow the same interface and can be added incrementally.
 
 ### 5. Interruption Handling
 
@@ -185,6 +193,20 @@ One goroutine cluster per session, sharing process-level resources. Reference:
 [livekit-server `rtcSessionWorker`](~/apps/livekit/pkg/rtc/room.go). Shared resources:
 ONNX runtime sessions (thread-safe for inference), HTTP client pools, UDPMux.
 
+### 8. Voqalcloud Feature Scope
+
+Gato's initial scope covers the core conversation loop. Two voqalcloud features are deferred
+to a later phase after the concept is proven:
+
+- **Recording**: dual-leg audio capture (WebM/Opus) as done in
+  [`_recording.py`](~/apps/voqalcloud/agent-sdk/src/voqalcloud/worker/_recording.py) — phase 2.
+- **RTVI data channel**: voqalcloud console uses RTVI-formatted messages over the WebRTC data
+  channel ([`VoqalWebRTCTransport`](~/apps/voqalcloud/console/src/lib/voqal-webrtc-transport.ts));
+  required for the existing client SDK to work unchanged — phase 2.
+
+Basic session metrics (duration, latency, error rates) are emitted from day 1 via the observer
+layer; the recording and RTVI protocol surface are not.
+
 ---
 
 ## Reference Implementations
@@ -207,5 +229,4 @@ ONNX runtime sessions (thread-safe for inference), HTTP client pools, UDPMux.
 
 ## Open Questions
 
-See [`open-questions.md`](./open-questions.md) for the full list of architectural decisions
-pending discussion.
+All architectural questions are settled. See [`open-questions.md`](./open-questions.md).
