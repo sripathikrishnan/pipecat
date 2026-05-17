@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Gato EXP-008 — Hello World Session</title>
+  <style>
+    body {
+      font-family: 'Courier New', monospace;
+      background: #1a1a2e;
+      color: #e0e0e0;
+      max-width: 700px;
+      margin: 40px auto;
+      padding: 20px;
+    }
+    h1 { color: #a0c4ff; font-size: 1.4em; margin-bottom: 4px; }
+    h2 { color: #8eb8ff; font-size: 1em; margin: 0 0 20px 0; font-weight: normal; }
+
+    #controls { display: flex; gap: 12px; align-items: center; margin-bottom: 20px; }
+
+    button {
+      background: #2a4080;
+      color: #e0e0e0;
+      border: 1px solid #4060a0;
+      padding: 8px 20px;
+      cursor: pointer;
+      border-radius: 4px;
+      font-family: inherit;
+      font-size: 0.9em;
+    }
+    button:hover { background: #3a5090; }
+    button:disabled { opacity: 0.4; cursor: default; }
+
+    #vad-indicator {
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: #444;
+      border: 2px solid #666;
+      transition: background 0.1s, border-color 0.1s;
+    }
+    #vad-indicator.speaking {
+      background: #44ff88;
+      border-color: #22cc66;
+      box-shadow: 0 0 8px #44ff88;
+    }
+
+    #status-label { font-size: 0.85em; color: #8899aa; }
+
+    #log {
+      background: #0d0d1a;
+      border: 1px solid #2a3050;
+      border-radius: 4px;
+      padding: 12px;
+      height: 400px;
+      overflow-y: auto;
+      font-size: 0.82em;
+      line-height: 1.6;
+    }
+
+    .log-entry { margin: 2px 0; }
+    .log-vad    { color: #88bbff; }
+    .log-stt    { color: #aaffaa; }
+    .log-bot    { color: #ffee88; }
+    .log-interrupt { color: #ff8888; }
+    .log-system { color: #778899; font-style: italic; }
+
+    .label {
+      display: inline-block;
+      width: 90px;
+      color: #667788;
+      font-size: 0.8em;
+    }
+  </style>
+</head>
+<body>
+  <h1>Gato EXP-008</h1>
+  <h2>Hello World Session — Full Pipeline Integration</h2>
+
+  <div id="controls">
+    <button id="btn-connect">Connect</button>
+    <button id="btn-disconnect" disabled>Disconnect</button>
+    <div id="vad-indicator" title="VAD: green = speaking"></div>
+    <span id="status-label">Disconnected</span>
+  </div>
+
+  <div id="log"><div class="log-entry log-system">Waiting for connection…</div></div>
+
+  <script>
+    const btnConnect    = document.getElementById('btn-connect');
+    const btnDisconnect = document.getElementById('btn-disconnect');
+    const vadIndicator  = document.getElementById('vad-indicator');
+    const statusLabel   = document.getElementById('status-label');
+    const logDiv        = document.getElementById('log');
+
+    let pc  = null;
+    let localStream = null;
+
+    function addLog(cssClass, label, text) {
+      const div = document.createElement('div');
+      div.className = 'log-entry ' + cssClass;
+      const ts = new Date().toLocaleTimeString('en-GB', { hour12: false });
+      div.innerHTML = `<span class="label">[${label}]</span> <span style="color:#445566">${ts}</span>  ${escHtml(text)}`;
+      logDiv.appendChild(div);
+      logDiv.scrollTop = logDiv.scrollHeight;
+    }
+
+    function escHtml(s) {
+      return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+
+    btnConnect.addEventListener('click', async () => {
+      btnConnect.disabled = true;
+      statusLabel.textContent = 'Requesting mic…';
+
+      try {
+        localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+      } catch (e) {
+        addLog('log-system', 'error', 'Mic access denied: ' + e.message);
+        btnConnect.disabled = false;
+        statusLabel.textContent = 'Disconnected';
+        return;
+      }
+
+      pc = new RTCPeerConnection({
+        iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+      });
+
+      // Add mic track.
+      for (const track of localStream.getTracks()) {
+        pc.addTrack(track, localStream);
+      }
+
+      // Play remote audio (bot voice).
+      pc.ontrack = (evt) => {
+        if (evt.track.kind === 'audio') {
+          const audio = new Audio();
+          audio.srcObject = evt.streams[0];
+          audio.autoplay = true;
+          addLog('log-system', 'system', 'Remote audio track connected');
+        }
+      };
+
+      pc.onconnectionstatechange = () => {
+        statusLabel.textContent = pc.connectionState;
+        addLog('log-system', 'system', 'Connection: ' + pc.connectionState);
+        if (pc.connectionState === 'failed' || pc.connectionState === 'closed') {
+          btnDisconnect.disabled = true;
+          btnConnect.disabled = false;
+          vadIndicator.className = '';
+        }
+      };
+
+      // Create offer.
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+
+      statusLabel.textContent = 'Connecting…';
+      addLog('log-system', 'system', 'Sending offer…');
+
+      let answer;
+      try {
+        const resp = await fetch('/offer', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sdp: pc.localDescription.sdp, type: pc.localDescription.type })
+        });
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        answer = await resp.json();
+      } catch (e) {
+        addLog('log-system', 'error', 'Offer failed: ' + e.message);
+        pc.close(); pc = null;
+        btnConnect.disabled = false;
+        statusLabel.textContent = 'Disconnected';
+        return;
+      }
+
+      await pc.setRemoteDescription(answer);
+      btnDisconnect.disabled = false;
+      addLog('log-system', 'system', 'WebRTC negotiation complete');
+
+      // Poll status events from server (simple long-poll via /events SSE-style).
+      // We use a simple polling approach for the demo.
+      pollStatus();
+    });
+
+    btnDisconnect.addEventListener('click', () => {
+      if (pc) { pc.close(); pc = null; }
+      if (localStream) { localStream.getTracks().forEach(t => t.stop()); localStream = null; }
+      btnConnect.disabled = false;
+      btnDisconnect.disabled = true;
+      vadIndicator.className = '';
+      statusLabel.textContent = 'Disconnected';
+      addLog('log-system', 'system', 'Disconnected');
+    });
+
+    // Simple status polling via /status endpoint.
+    // The server pushes events as newline-delimited JSON.
+    let polling = false;
+    async function pollStatus() {
+      if (polling) return;
+      polling = true;
+      while (pc && pc.connectionState !== 'closed' && pc.connectionState !== 'failed') {
+        try {
+          const resp = await fetch('/status?timeout=5');
+          if (!resp.ok) break;
+          const text = await resp.text();
+          for (const line of text.split('\n')) {
+            if (!line.trim()) continue;
+            try {
+              const evt = JSON.parse(line);
+              handleStatusEvent(evt);
+            } catch (_) {}
+          }
+        } catch (_) {
+          // Network error — retry after brief delay.
+          await new Promise(r => setTimeout(r, 1000));
+        }
+      }
+      polling = false;
+    }
+
+    function handleStatusEvent(evt) {
+      switch (evt.kind) {
+        case 'vad':
+          if (evt.text === 'speaking') {
+            vadIndicator.className = 'speaking';
+            addLog('log-vad', 'VAD', 'Speaking');
+          } else {
+            vadIndicator.className = '';
+            addLog('log-vad', 'VAD', 'Silent');
+          }
+          break;
+        case 'stt':
+          addLog('log-stt', 'STT', '"' + evt.text + '"');
+          break;
+        case 'bot':
+          addLog('log-bot', 'BOT', '"' + evt.text + '"');
+          break;
+        case 'interrupt':
+          addLog('log-interrupt', 'INTERRUPT', 'Heard: "' + evt.text + '"');
+          break;
+      }
+    }
+  </script>
+</body>
+</html>

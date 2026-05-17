@@ -31,15 +31,15 @@ EXP-006 (Google STT streaming)    ───────────────�
 
 | ID      | Title                                    | Risk Addressed                       | Status | Depends on       |
 |---------|------------------------------------------|--------------------------------------|--------|------------------|
-| EXP-001 | Output transport end-to-end              | Pacing, chunk norm, BotSpeaking, interrupt | [ ] | —           |
-| EXP-002 | Audio resampling (24 kHz → 48 kHz)       | Best Go resampling implementation    | [ ]    | EXP-001          |
-| EXP-003 | Interrupt-safe audio queue               | FrameQueue semantics, race-free      | [ ]    | EXP-001, EXP-002 |
-| EXP-004 | Silero VAD via CGO/ONNX                  | VAD latency, multi-session isolation | [ ]    | —                |
-| EXP-005 | FrameProcessor priority queue            | SystemFrame priority guarantee       | [ ]    | —                |
-| EXP-006 | Google Cloud STT gRPC streaming          | Stream reconnect, latency            | [ ]    | —                |
-| EXP-007 | [HEARD] end-to-end interruption          | Exact heard-text accuracy            | [ ]    | EXP-003          |
-| EXP-008 | Hello world session                      | Full pipeline integration            | [ ]    | EXP-003–007      |
-| EXP-009 | Pipeline performance, stability, hardening | Sessions/process, leaks, failure isolation | [ ] | EXP-008   |
+| EXP-001 | Output transport end-to-end              | Pacing, chunk norm, BotSpeaking, interrupt | [x] | —           |
+| EXP-002 | Audio resampling (24 kHz → 48 kHz)       | Best Go resampling implementation    | [x]    | EXP-001          |
+| EXP-003 | Interrupt-safe audio queue               | FrameQueue semantics, race-free      | [x]    | EXP-001, EXP-002 |
+| EXP-004 | Silero VAD via CGO/ONNX                  | VAD latency, multi-session isolation | [x]    | —                |
+| EXP-005 | FrameProcessor priority queue            | SystemFrame priority guarantee       | [x]    | —                |
+| EXP-006 | Google Cloud STT gRPC streaming          | Stream reconnect, latency            | [x]    | —                |
+| EXP-007 | [HEARD] end-to-end interruption          | Exact heard-text accuracy            | [x]    | EXP-003          |
+| EXP-008 | Hello world session                      | Full pipeline integration            | [x]    | EXP-003–007      |
+| EXP-009 | Pipeline performance, stability, hardening | Sessions/process, leaks, failure isolation | [x] | EXP-008   |
 
 Status: `[ ]` not started · `[~]` in progress · `[x]` complete · `[!]` blocked/redesign needed
 

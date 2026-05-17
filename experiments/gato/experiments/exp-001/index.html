@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>EXP-001 — Output Transport End-to-End</title>
+<style>
+  body { font-family: monospace; padding: 20px; background: #111; color: #ddd; }
+  h1   { color: #9cf; }
+  button { margin: 4px; padding: 8px 16px; background: #333; color: #eee;
+           border: 1px solid #666; cursor: pointer; border-radius: 3px; }
+  button:hover { background: #555; }
+  #log  { margin-top: 16px; background: #1a1a1a; padding: 12px; border: 1px solid #444;
+          height: 400px; overflow-y: auto; font-size: 12px; }
+  .ts   { color: #888; }
+  .info { color: #9cf; }
+  .warn { color: #fc9; }
+  .err  { color: #f66; }
+  #timing { margin-top: 12px; font-size: 13px; }
+</style>
+</head>
+<body>
+<h1>EXP-001: Output Transport End-to-End</h1>
+
+<div>
+  <button onclick="connect()">Connect WebRTC</button>
+  <button onclick="sendInterrupt()">Send Interrupt</button>
+  <button onclick="clearLog()">Clear Log</button>
+</div>
+
+<div id="timing">Timing: —</div>
+<div id="log"></div>
+
+<script>
+let pc = null;
+let audioContext = null;
+let firstAudioAt = null;
+let lastAudioAt = null;
+
+function ts() {
+  return new Date().toISOString().substr(11, 12);
+}
+
+function log(msg, cls = '') {
+  const div = document.getElementById('log');
+  const line = document.createElement('div');
+  line.innerHTML = `<span class="ts">[${ts()}]</span> <span class="${cls}">${msg}</span>`;
+  div.appendChild(line);
+  div.scrollTop = div.scrollHeight;
+}
+
+function clearLog() {
+  document.getElementById('log').innerHTML = '';
+}
+
+async function connect() {
+  if (pc) { pc.close(); pc = null; }
+
+  audioContext = new AudioContext();
+  firstAudioAt = null;
+  lastAudioAt = null;
+
+  pc = new RTCPeerConnection({
+    iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+  });
+
+  pc.ontrack = (evt) => {
+    log('Track received: ' + evt.track.kind, 'info');
+    if (evt.track.kind === 'audio') {
+      const stream = new MediaStream([evt.track]);
+      const src = audioContext.createMediaStreamSource(stream);
+
+      // ScriptProcessor to measure timing — deprecated but universally supported.
+      const proc = audioContext.createScriptProcessor(512, 1, 1);
+      let lastSilence = false;
+      proc.onaudioprocess = (e) => {
+        const data = e.inputBuffer.getChannelData(0);
+        let rms = 0;
+        for (let i = 0; i < data.length; i++) rms += data[i] * data[i];
+        rms = Math.sqrt(rms / data.length);
+        const isSilence = rms < 0.001;
+
+        if (!isSilence) {
+          const now = audioContext.currentTime;
+          if (firstAudioAt === null) {
+            firstAudioAt = now;
+            log('▶ First audio at AudioContext.currentTime=' + now.toFixed(3), 'info');
+          }
+          lastAudioAt = now;
+        }
+        if (!isSilence && lastSilence) {
+          log('▶ Audio resumed', 'info');
+        }
+        if (isSilence && !lastSilence && firstAudioAt !== null) {
+          const dur = (lastAudioAt - firstAudioAt).toFixed(3);
+          log(`■ Audio stopped — duration: ${dur}s (expected ~2.0s)`, 'warn');
+          document.getElementById('timing').textContent =
+            `Duration: ${dur}s | First: ${firstAudioAt.toFixed(3)}s | Last: ${lastAudioAt.toFixed(3)}s`;
+        }
+        lastSilence = isSilence;
+      };
+
+      src.connect(proc);
+      proc.connect(audioContext.destination);
+      log('Audio pipeline connected', 'info');
+    }
+  };
+
+  pc.oniceconnectionstatechange = () => {
+    log('ICE: ' + pc.iceConnectionState,
+        pc.iceConnectionState === 'connected' ? 'info' : '');
+  };
+
+  pc.onconnectionstatechange = () => {
+    log('Connection: ' + pc.connectionState,
+        pc.connectionState === 'connected' ? 'info' :
+        pc.connectionState === 'failed' ? 'err' : '');
+  };
+
+  const offer = await pc.createOffer({ offerToReceiveAudio: true });
+  await pc.setLocalDescription(offer);
+
+  log('Sending offer…');
+  const resp = await fetch('/offer', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(pc.localDescription),
+  });
+  const answer = await resp.json();
+  await pc.setRemoteDescription(answer);
+  log('Answer received — waiting for ICE…');
+}
+
+async function sendInterrupt() {
+  const interruptAt = performance.now();
+  log('Sending interrupt signal…', 'warn');
+  const resp = await fetch('/interrupt', { method: 'POST' });
+  const text = await resp.text();
+  log('Interrupt sent: ' + text.trim() + ` (rtt: ${(performance.now()-interruptAt).toFixed(1)}ms)`, 'warn');
+  if (firstAudioAt !== null && lastAudioAt !== null) {
+    const dur = (lastAudioAt - firstAudioAt).toFixed(3);
+    log(`Audio before interrupt: ~${dur}s`, 'info');
+  }
+}
+
+log('EXP-001 ready. Click "Connect WebRTC" to start.', 'info');
+</script>
+</body>
+</html>

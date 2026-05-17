@@ -3,7 +3,7 @@
 **Risk addressed**: Can Silero VAD run via CGO at 20 ms chunk cadence with acceptable inference
 latency across multiple concurrent sessions? Does the goroutine pool model work?
 
-**Status**: [ ]
+**Status**: [x] PASS — 2026-05-17
 
 **Depends on**: nothing (fully standalone)
 
@@ -118,3 +118,36 @@ brew install onnxruntime
 apt-get install libonnxruntime-dev
 # or download from https://github.com/microsoft/onnxruntime/releases
 ```
+
+---
+
+## Results
+
+**Date**: 2026-05-17 | **Platform**: darwin/arm64 (Apple M4 Max), Go 1.26.1, ORT 1.26.0
+
+### Model I/O (v5 differs from v4 docs)
+
+| Name    | Shape         | Notes |
+|---------|---------------|-------|
+| input   | [1, 512]      | float32 audio samples |
+| state   | [2, 1, 128]   | float32 combined LSTM state (h+c merged) |
+| sr      | scalar int64  | sample rate (16000) |
+| output  | [1, 1]        | float32 speech probability |
+| stateN  | [2, 1, 128]   | float32 updated state |
+
+### Latency Measurements
+
+| Scenario | p50 (ms) | p99 (ms) | Pass? |
+|----------|----------|----------|-------|
+| Single stream (500 chunks) | 0.06 | 0.08 | ✓ < 5ms |
+| 10 concurrent | 0.44 | 0.84 | ✓ < 10ms |
+| 50 concurrent | 1.35 | 4.41 | ✓ < 10ms |
+| 100 concurrent | 0.70 | 47.38 | ✗ ORT contention |
+
+Benchmark: 60.5 µs/call (330× headroom vs 20ms chunk budget).
+
+### Decision
+
+**Strategy B chosen**: shared ORT session + per-stream `StreamState` ([2][1][128]float32).
+No Go-level mutex needed — ORT is internally thread-safe. Race detector: clean.
+Goroutine pool bounded to `NumCPU()` avoids N=100 ORT contention at production scale.
