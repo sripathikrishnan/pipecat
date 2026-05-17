@@ -15,8 +15,11 @@ A spiritual successor to pipecat, rewritten in Go for resource efficiency and mu
 - **Scale to zero**: minimal idle cost; one Go binary per node, many sessions per binary
 - **No SFU**: direct 1:1 WebRTC P2P between browser/mobile and bot — proven in
   [voqalcloud SmallWebRTC](~/apps/voqalcloud/agent-sdk/src/voqalcloud/worker/_transport.py)
-- **Single UDP port**: Pion `UDPMuxDefault` demuxes all ICE sessions by username fragment;
+- **Single UDP port per node**: Pion `UDPMuxDefault` demuxes all ICE sessions by username fragment;
   see [pion ice-single-port example](https://github.com/pion/webrtc/tree/master/examples/ice-single-port)
+- **Multi-node via Switchboard**: Gato nodes register with the voqalcloud Switchboard using the
+  existing node protocol; session assignment is sticky — the client connects directly to the
+  assigned node for the session lifetime, no media relay
 - **IPv6 mandatory**: bind to `[::]`, include v6 candidates in ICE
 - **TURN**: pluggable ICE server config, not required for hello world
 
@@ -25,10 +28,18 @@ A spiritual successor to pipecat, rewritten in Go for resource efficiency and mu
 ## Architecture
 
 ```
-Browser / Mobile
-       │
-       │  WebRTC P2P · Pion · single UDP port · IPv6
-       ▼
+┌─────────────────────────────────────────────────────────────┐
+│  Voqalcloud Switchboard                                     │
+│  session assignment · node registration · signaling relay   │
+└────────┬──────────────────┬──────────────────┬─────────────┘
+         │                  │                  │
+         ▼                  ▼                  ▼
+    Gato Node A        Gato Node B        Gato Node C
+    (single UDP port, Pion UDPMuxDefault, N sessions each)
+
+         │  WebRTC P2P · Pion · IPv6
+         │  (client connects directly to assigned node)
+         ▼
 ┌────────────────────────────────────────────────────────────┐
 │  Gato Runtime (Go)                       per-session       │
 │                                                            │
@@ -152,7 +163,20 @@ When VAD fires during TTS playback:
 Pattern adapted from pipecat-ADK's [HEARD] mechanism:
 [`interruption.py`](~/apps/pipecat-adk/src/pipecat_adk/interruption.py)
 
-### 6. Session Worker Pattern
+### 6. Multi-Node Deployment
+
+Gato integrates with the voqalcloud Switchboard using the existing
+[node protocol](~/apps/voqalcloud/switchboard/internal/proto/) (protobuf over WebSocket):
+register → receive session probes → ack/nack → relay signaling → media P2P.
+
+Session assignment is made once at creation time and is sticky for the session lifetime.
+The client connects directly to the assigned Gato node's IP; there is no relay in the media
+path. Each node exposes one UDP port; Pion `UDPMuxDefault` demuxes all sessions on that port
+by ICE username fragment. Horizontal scale = more Gato nodes registered with the Switchboard.
+
+Gato nodes replace the Python `agent-sdk` workers; the Switchboard is unchanged.
+
+### 7. Session Worker Pattern
 
 One goroutine cluster per session, sharing process-level resources. Reference:
 [livekit-server `rtcSessionWorker`](~/apps/livekit/pkg/rtc/room.go). Shared resources:
@@ -170,6 +194,7 @@ ONNX runtime sessions (thread-safe for inference), HTTP client pools, UDPMux.
 | Business-layer SDK               | [voqalcloud agent-sdk](~/apps/voqalcloud/agent-sdk/)                                          |
 | Session worker goroutine         | [livekit-server room.go](~/apps/livekit/pkg/rtc/room.go)                                      |
 | UDP mux (single port)            | [livekit roommanager.go](~/apps/livekit/pkg/service/roommanager.go)                           |
+| Multi-node switchboard protocol  | [voqalcloud node proto](~/apps/voqalcloud/switchboard/internal/proto/)                         |
 | VAD integration pattern          | [livekit-agents vad.py](~/apps/livekit-agents/livekit-agents/livekit/agents/vad.py)           |
 | Turn / endpointing               | [livekit-agents endpointing.py](~/apps/livekit-agents/livekit-agents/livekit/agents/voice/endpointing.py) |
 | Event-streaming model (contrast) | [livekit-agents agent_session.py](~/apps/livekit-agents/livekit-agents/livekit/agents/voice/agent_session.py) |
