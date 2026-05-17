@@ -18,11 +18,12 @@ EXP-001 (Output transport end-to-end)
               └── EXP-007 ([HEARD] end-to-end)
                     └── EXP-008 (Hello world session)
                           └── EXP-009 (Performance, stability, production hardening)
+                                └── EXP-010 (Real E2E WebRTC test with aiortc)
 
 EXP-004 (Silero VAD / CGO)        ─────────────────────┐
 EXP-005 (FrameProcessor priority)  ────────────────────┤
 EXP-006 (Google STT streaming)    ─────────────────────┤
-                                                        └── EXP-008 → EXP-009
+                                                        └── EXP-008 → EXP-009 → EXP-010
 ```
 
 ---
@@ -40,6 +41,7 @@ EXP-006 (Google STT streaming)    ───────────────�
 | EXP-007 | [HEARD] end-to-end interruption          | Exact heard-text accuracy            | [x]    | EXP-003          |
 | EXP-008 | Hello world session                      | Full pipeline integration            | [x]    | EXP-003–007      |
 | EXP-009 | Pipeline performance, stability, hardening | Sessions/process, leaks, failure isolation | [x] | EXP-008   |
+| EXP-010 | Real E2E WebRTC test (aiortc client)     | Full pipeline proven with real audio | [x]    | EXP-008–009      |
 
 Status: `[ ]` not started · `[~]` in progress · `[x]` complete · `[!]` blocked/redesign needed
 

@@ -1,0 +1,3 @@
+# Ignore all generated output WAVs except the reference recording
+*.wav
+!reference_output.wav

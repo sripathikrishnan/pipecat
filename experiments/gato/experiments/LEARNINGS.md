@@ -17,6 +17,7 @@ Updated after each experiment. Ordered by impact on architecture confidence.
 | EXP-007 | [HEARD] end-to-end interruption  | [x]    | last-chunk-dequeue marker is correct |
 | EXP-008 | Hello world session              | [x]    | Full pipeline integration — all automated tests pass |
 | EXP-009 | Pipeline performance & stability  | [x]    | Zero goroutine growth; VAD p99=0.55ms at N=10 |
+| EXP-010 | Real E2E WebRTC test (aiortc)    | [x]    | Full pipeline proven: VAD→STT→LLM→TTS→Opus→WebRTC |
 
 ---
 
@@ -479,3 +480,88 @@ and handles all failure modes gracefully. Proceed to production implementation.
 The `outputController` mutex pattern is the canonical way to manage TTS output
 cancellation across goroutines in Gato.
    Current estimate: ~50 concurrent sessions based on VAD p99 at N=50 (4.41ms).
+
+---
+
+## EXP-010: Real End-to-End WebRTC Test (aiortc)
+
+**Date**: 2026-05-17 | **Status**: PASS — full E2E pipeline validated
+
+### Design
+
+Real WebRTC call using aiortc Python client → Pion Go server (EXP-008).
+- Client: aiortc MediaPlayer sends real 74s voice recording (48kHz WAV → Opus over WebRTC)
+- Server: full pipeline (Opus decode → VAD → turn detection → Google STT → stub LLM → Google TTS → Opus encode → WebRTC)
+- Client: aiortc MediaRecorder captures server TTS response to WAV
+- Manual verification: listen to output WAV, confirm TTS says "Okay, I heard: [first 10 words]"
+
+### Result
+
+- VAD detected 8+ speech turns in 74s recording
+- STT transcribed correctly (e.g., "hi my name is Shadi Krishna", "a Java Plus python backend engineer...")
+- LLM stub produced correct "Okay, I heard: [first 10 words]" responses
+- Output WAV: 26 seconds of TTS audio recorded via WebRTC (5.3 MB, 48kHz stereo)
+- No errors in final run
+
+### Three Bugs Found and Fixed
+
+**Bug 1: Silero VAD context buffer missing (critical)**
+
+The Silero VAD v5 ONNX model's outer wrapper prepends 64 "context" samples (the last
+64 samples from the previous call) to each 512-sample chunk before calling the inner
+LSTM model. The Go code was calling `Infer(512 samples)` — the inner model without
+context. Result: all speech probabilities were ~0.0005 regardless of audio content.
+
+Fix: `Infer` now accepts 576 samples (64 context + 512 chunk). The caller maintains a
+64-sample context buffer and prepends it before each inference. After inference, the
+context is updated to the last 64 samples of the current chunk.
+
+This is NOT documented anywhere in the Silero VAD ONNX model's interface. It was
+discovered by comparing the PyTorch TorchScript wrapper source code to the raw ONNX
+model I/O.
+
+**Bug 2: Raw PCM sent as Opus RTP (output broken)**
+
+`webrtc.TrackLocalStaticSample` with MimeType Opus expects Opus-encoded bytes in
+`WriteSample.Data`. The Go server was sending raw s16le PCM bytes as the RTP payload.
+The aiortc client received these as Opus packets, tried to decode them, and got
+`InvalidDataError`. Result: zero audio recorded.
+
+Fix: added an `opus.Encoder` (hraban/opus) to the Session. In `audioTaskRun`, each
+10ms PCM chunk (960 bytes = 480 int16 samples) is Opus-encoded before WriteSample.
+
+**Bug 3: Last TTS chunk not padded (encode error)**
+
+When TTS audio length is not a multiple of 960 bytes, the last chunk is shorter.
+The Opus encoder only accepts valid frame sizes (120/240/480/960/1920/2880 samples).
+A partial last chunk (e.g. 400 samples) causes `OPUS_BAD_ARG`.
+
+Fix: in `handleSTTResult`, always allocate a full 960-byte chunk (zero-padded) and
+copy the available data into it.
+
+### Key Learnings
+
+1. **Silero VAD ONNX requires 64-sample context prepended per chunk.** The published ONNX
+   model interface (`input: [1, 512]`) is misleading — the model expects `[1, 576]` with
+   the first 64 samples being the "context" (last 64 samples from the previous call).
+   Without context, all probabilities are ~0 regardless of audio content.
+
+2. **Pion `TrackLocalStaticSample` does NOT encode media.** For Opus tracks, `WriteSample`
+   data must be Opus-encoded. The caller is responsible for codec encoding.
+
+3. **Full pipeline proves Gato architecture is sound.** Real WebRTC call, real Silero VAD,
+   real Google STT, real Google TTS, all working together with correct audio at each
+   stage. No architectural revisions required.
+
+4. **STT quality on Opus-transcoded speech is good.** The recording went through:
+   WAV → aiortc Opus encoder → WebRTC → Pion → hraban/opus decoder → 3:1 decimate →
+   float32. STT still produced high-quality transcripts. Opus codec round-trip does not
+   degrade STT accuracy meaningfully.
+
+### Architecture Decision
+
+**EXP-010 confirms Gato is E2E viable.** The three bugs found were integration issues
+(ONNX context, Opus encoding) not architectural flaws. The pipeline is now fully
+exercised via real WebRTC. Proceed to production implementation.
+
+### Architecture Confidence: HIGH — proven E2E with real audio

@@ -25,14 +25,16 @@ const (
 
 	// Input/VAD constants: 16kHz mono s16le.
 	vadSampleRate = 16000
-	// VAD needs 512 samples = 32ms at 16kHz.
+	// VAD processes 512 samples = 32ms at 16kHz per chunk.
+	// Plus 64 context samples (last 64 from the previous call) prepended,
+	// giving InferSize=576 total samples passed to Infer().
 	vadSamplesPerChunk = 512
 	vadBytesPerChunk   = vadSamplesPerChunk * 2
 
 	// Turn detection thresholds.
 	speechThreshold  = 0.5
-	speechStartCount = 3  // 3 × 20ms = 60ms speech to start turn
-	speechEndCount   = 25 // 25 × 20ms = 500ms silence to end turn
+	speechStartCount = 3  // 3 × 32ms = ~96ms speech to start turn
+	speechEndCount   = 25 // 25 × 32ms = 800ms silence to end turn
 )
 
 // StatusEvent is used to push UI status updates to connected clients via SSE.
@@ -49,8 +51,9 @@ type Session struct {
 	vad      *SileroVAD
 	vadState StreamState
 
-	stt *STTClient
-	tts *GoogleTTS
+	stt     *STTClient
+	tts     *GoogleTTS
+	encoder *opus.Encoder // Opus encoder for output track
 
 	audioQueue *AudioQueue
 	resampler  *LinearResampler
@@ -79,11 +82,16 @@ func NewSession(
 	tts *GoogleTTS,
 	statusCh chan StatusEvent,
 ) *Session {
+	enc, err := opus.NewEncoder(outSampleRate, outChannels, opus.AppVoIP)
+	if err != nil {
+		log.Panicf("opus.NewEncoder: %v", err)
+	}
 	return &Session{
 		pc:          pc,
 		outputTrack: outputTrack,
 		vad:         vad,
 		tts:         tts,
+		encoder:     enc,
 		audioQueue:  NewAudioQueue(),
 		resampler:   &LinearResampler{},
 		statusCh:    statusCh,
@@ -143,10 +151,14 @@ func (s *Session) handleInputTrack(ctx context.Context, track *webrtc.TrackRemot
 
 	pcm48 := make([]int16, 960) // 20ms at 48kHz
 
-	// VAD accumulation buffer: we need 512 samples at 16kHz = 32ms.
-	// Each decoded frame gives us 320 samples at 16kHz (20ms decimated).
-	// Accumulate into vadBuf and flush when we have 512.
+	// VAD accumulation buffer: accumulate 512 samples at 16kHz per chunk.
+	// Each decoded Opus frame gives 320 samples at 16kHz (960 samples @ 48kHz, decimated 3:1).
 	var vadBuf []float32
+
+	// Context buffer: last 64 samples passed to the previous VAD call.
+	// Silero VAD v5's outer model prepends these to each 512-sample chunk before
+	// calling the inner model. Without this context, all probabilities are ~0.
+	vadContext := make([]float32, ContextSize)
 
 	// closeTurn tears down the active STT stream. Safe to call when no turn is active.
 	closeTurn := func() {
@@ -201,12 +213,19 @@ func (s *Session) handleInputTrack(ctx context.Context, track *webrtc.TrackRemot
 			chunk := vadBuf[:vadSamplesPerChunk]
 			vadBuf = vadBuf[vadSamplesPerChunk:]
 
-			prob, newState, err := s.vad.Infer(chunk, vadSampleRate, s.vadState)
+			// Prepend context (64 samples) to form a 576-sample input.
+			input := make([]float32, InferSize)
+			copy(input[:ContextSize], vadContext)
+			copy(input[ContextSize:], chunk)
+
+			prob, newState, err := s.vad.Infer(input, vadSampleRate, s.vadState)
 			if err != nil {
 				log.Printf("[session] vad infer: %v", err)
 				continue
 			}
 			s.vadState = newState
+			// Advance context: keep the last 64 samples of the current chunk.
+			copy(vadContext, input[vadSamplesPerChunk:])
 
 			if prob > speechThreshold {
 				speechConsecutive++
@@ -302,7 +321,8 @@ func (s *Session) handleSTTResult(ctx context.Context, transcript string) {
 			end = len(pcm48)
 		}
 		isLast := end >= len(pcm48)
-		chunk := make([]byte, end-i)
+		// Pad last chunk to a full Opus frame (outChunkBytes) with silence.
+		chunk := make([]byte, outChunkBytes)
 		copy(chunk, pcm48[i:end])
 		segText := ""
 		if isLast {
@@ -355,8 +375,20 @@ func (s *Session) audioTaskRun(ctx context.Context) {
 			}
 
 			if s.outputTrack != nil {
+				// Convert s16le bytes → int16 slice for Opus encoder.
+				pcm := make([]int16, len(f.Data)/2)
+				for i := range pcm {
+					pcm[i] = int16(binary.LittleEndian.Uint16(f.Data[i*2:]))
+				}
+				// Encode PCM → Opus. Buffer sized conservatively.
+				opusBuf := make([]byte, 1000)
+				n, encErr := s.encoder.Encode(pcm, opusBuf)
+				if encErr != nil {
+					log.Printf("[audio] opus encode: %v", encErr)
+					break
+				}
 				err := s.outputTrack.WriteSample(media.Sample{
-					Data:     f.Data,
+					Data:     opusBuf[:n],
 					Duration: chunkDur,
 				})
 				if err != nil {

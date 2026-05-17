@@ -75,24 +75,35 @@ func (v *SileroVAD) Close() {
 	v.session.Destroy()
 }
 
-// Infer runs one VAD inference step on a 512-sample audio chunk.
+// ContextSize is the number of context samples prepended before the 512-sample chunk.
+// The Silero VAD v5 model's outer wrapper prepends the last 64 samples from the
+// previous call (the "context") to each new 512-sample chunk. Skipping the context
+// causes near-zero probabilities regardless of audio content.
+const ContextSize = 64
+
+// InferSize is the total samples per VAD call: context + chunk.
+const InferSize = ContextSize + 512
+
+// Infer runs one VAD inference step.
 //
-// audio must be exactly 512 float32 samples (32ms at 16kHz).
-// sr is the sample rate (should be 16000).
+// audio must be exactly InferSize (576) float32 samples: 64 context samples
+// (the last 64 samples from the previous call) followed by 512 new samples.
+// On the first call, pass zeros for the context portion.
+// sr is the sample rate (must be 16000).
 // state is the caller-maintained LSTM hidden state for this stream.
 //
 // Returns the speech probability in [0, 1], the updated LSTM state,
 // and any error. Thread-safe: multiple goroutines can call concurrently
 // with their own distinct state instances.
 func (v *SileroVAD) Infer(audio []float32, sr int64, state StreamState) (prob float32, newState StreamState, err error) {
-	if len(audio) != 512 {
-		return 0, state, fmt.Errorf("audio must be 512 samples, got %d", len(audio))
+	if len(audio) != InferSize {
+		return 0, state, fmt.Errorf("audio must be %d samples (64 ctx + 512 chunk), got %d", InferSize, len(audio))
 	}
 
 	// --- Build input tensors ---
 
-	// input: [1, 512]
-	inputShape := ort.NewShape(1, 512)
+	// input: [1, 576] (context + chunk)
+	inputShape := ort.NewShape(1, int64(InferSize))
 	inputTensor, e := ort.NewTensor(inputShape, audio)
 	if e != nil {
 		return 0, state, fmt.Errorf("create input tensor: %w", e)
