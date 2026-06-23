@@ -1,0 +1,1075 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Agent-Voice Bridge: Decoupling Intelligence from the Voice Pipeline</title>
+<style>
+  :root {
+    --bg: #0f1117;
+    --surface: #1a1d27;
+    --surface2: #21242f;
+    --border: #2d3142;
+    --accent: #6366f1;
+    --accent2: #06b6d4;
+    --green: #10b981;
+    --yellow: #f59e0b;
+    --red: #ef4444;
+    --text: #e2e8f0;
+    --text-muted: #94a3b8;
+    --text-dim: #64748b;
+    --code-bg: #0d1117;
+    --pill-blue: #1e3a5f;
+    --pill-green: #14352a;
+    --pill-red: #3b1515;
+    --pill-yellow: #3b2f0a;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.65;
+    font-size: 15px;
+  }
+
+  .page {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 48px 32px 96px;
+  }
+
+  /* Header */
+  .header {
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 32px;
+    margin-bottom: 48px;
+  }
+  .tag-line {
+    font-size: 12px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--accent);
+    font-weight: 600;
+    margin-bottom: 12px;
+  }
+  h1 {
+    font-size: 36px;
+    font-weight: 700;
+    line-height: 1.2;
+    color: #f1f5f9;
+    margin-bottom: 12px;
+  }
+  .subtitle {
+    font-size: 18px;
+    color: var(--text-muted);
+    max-width: 700px;
+  }
+  .meta {
+    margin-top: 20px;
+    font-size: 13px;
+    color: var(--text-dim);
+  }
+
+  /* Verdict banner */
+  .verdict {
+    background: linear-gradient(135deg, #0f2a1a 0%, #0a1f2e 100%);
+    border: 1px solid var(--green);
+    border-radius: 10px;
+    padding: 24px 28px;
+    margin-bottom: 48px;
+    display: flex;
+    gap: 20px;
+    align-items: flex-start;
+  }
+  .verdict-icon { font-size: 32px; flex-shrink: 0; }
+  .verdict-title { font-size: 18px; font-weight: 700; color: var(--green); margin-bottom: 6px; }
+  .verdict-body { color: var(--text-muted); font-size: 14px; }
+
+  /* Section structure */
+  h2 {
+    font-size: 24px;
+    font-weight: 700;
+    color: #f1f5f9;
+    margin-bottom: 8px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+    margin-top: 56px;
+  }
+  h2:first-of-type { margin-top: 0; }
+  h3 {
+    font-size: 17px;
+    font-weight: 600;
+    color: #cbd5e1;
+    margin-top: 28px;
+    margin-bottom: 10px;
+  }
+  h4 {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--accent2);
+    margin-top: 18px;
+    margin-bottom: 6px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+
+  p { margin-bottom: 14px; color: var(--text-muted); }
+
+  ul, ol { margin-bottom: 14px; padding-left: 22px; color: var(--text-muted); }
+  li { margin-bottom: 5px; }
+
+  strong { color: var(--text); font-weight: 600; }
+  code {
+    font-family: "JetBrains Mono", "Fira Code", "Cascadia Code", monospace;
+    background: var(--code-bg);
+    color: #a5f3fc;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 13px;
+    border: 1px solid #1e293b;
+  }
+
+  /* Audience pills */
+  .audience-pills {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+  }
+  .pill {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    padding: 3px 10px;
+    border-radius: 100px;
+  }
+  .pill-architect { background: var(--pill-blue); color: #60a5fa; border: 1px solid #1e40af; }
+  .pill-dev { background: var(--pill-green); color: #34d399; border: 1px solid #065f46; }
+  .pill-warning { background: var(--pill-red); color: #f87171; border: 1px solid #7f1d1d; }
+
+  /* Code blocks */
+  pre {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 20px;
+    overflow-x: auto;
+    margin: 16px 0;
+    font-family: "JetBrains Mono", "Fira Code", monospace;
+    font-size: 13px;
+    line-height: 1.7;
+  }
+  pre code {
+    background: none;
+    border: none;
+    padding: 0;
+    color: #e2e8f0;
+    font-size: inherit;
+  }
+  .comment { color: #475569; }
+  .keyword { color: #818cf8; }
+  .string { color: #86efac; }
+  .type { color: #67e8f9; }
+  .number { color: #fca5a5; }
+  .fn { color: #fbbf24; }
+
+  /* Info boxes */
+  .box {
+    border-radius: 8px;
+    padding: 18px 20px;
+    margin: 20px 0;
+    border-left: 3px solid;
+  }
+  .box-info { background: #0f1f3d; border-color: var(--accent2); }
+  .box-warn { background: #2d1f0a; border-color: var(--yellow); }
+  .box-danger { background: #1f0a0a; border-color: var(--red); }
+  .box-success { background: #0a1f14; border-color: var(--green); }
+  .box-title {
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    margin-bottom: 8px;
+  }
+  .box-info .box-title { color: var(--accent2); }
+  .box-warn .box-title { color: var(--yellow); }
+  .box-danger .box-title { color: var(--red); }
+  .box-success .box-title { color: var(--green); }
+
+  /* Tables */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 16px 0;
+    font-size: 14px;
+  }
+  th {
+    text-align: left;
+    padding: 10px 14px;
+    background: var(--surface2);
+    color: var(--text);
+    font-weight: 600;
+    border-bottom: 2px solid var(--border);
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  td {
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border);
+    color: var(--text-muted);
+    vertical-align: top;
+  }
+  tr:hover td { background: var(--surface2); }
+
+  /* ASCII diagram box */
+  .diagram {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 24px;
+    margin: 20px 0;
+    overflow-x: auto;
+  }
+  .diagram pre {
+    background: none;
+    border: none;
+    padding: 0;
+    margin: 0;
+    color: #94a3b8;
+    font-size: 13px;
+  }
+  .diagram .hl { color: #67e8f9; }
+  .diagram .hl2 { color: #86efac; }
+  .diagram .hl3 { color: #fbbf24; }
+
+  /* Comparison grid */
+  .compare-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin: 20px 0;
+  }
+  @media (max-width: 700px) { .compare-grid { grid-template-columns: 1fr; } }
+  .compare-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 18px;
+  }
+  .compare-card h4 { margin-top: 0; }
+
+  /* Nav / TOC */
+  .toc {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 20px 24px;
+    margin-bottom: 48px;
+  }
+  .toc-title { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-dim); margin-bottom: 12px; }
+  .toc ol { margin-bottom: 0; }
+  .toc li { margin-bottom: 4px; }
+  .toc a { color: var(--accent2); text-decoration: none; font-size: 14px; }
+  .toc a:hover { text-decoration: underline; }
+
+  /* Constraint chips */
+  .constraint-list { list-style: none; padding: 0; }
+  .constraint-list li {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 12px 16px;
+    margin-bottom: 10px;
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+  }
+  .constraint-badge {
+    flex-shrink: 0;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    padding: 2px 8px;
+    border-radius: 4px;
+    margin-top: 1px;
+  }
+  .badge-hard { background: var(--pill-red); color: #f87171; }
+  .badge-medium { background: var(--pill-yellow); color: #fbbf24; }
+  .badge-soft { background: var(--pill-blue); color: #60a5fa; }
+
+  .section-divider {
+    border: none;
+    border-top: 1px solid var(--border);
+    margin: 56px 0;
+  }
+
+  .latency-bar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 8px;
+    font-size: 13px;
+  }
+  .latency-label { width: 220px; flex-shrink: 0; color: var(--text-muted); }
+  .latency-track { flex: 1; background: var(--surface2); border-radius: 4px; height: 12px; position: relative; }
+  .latency-fill {
+    height: 100%;
+    border-radius: 4px;
+    position: absolute;
+    left: 0;
+    top: 0;
+  }
+  .latency-value { width: 60px; text-align: right; font-family: monospace; color: var(--text-dim); font-size: 12px; }
+
+  footer {
+    margin-top: 80px;
+    padding-top: 24px;
+    border-top: 1px solid var(--border);
+    color: var(--text-dim);
+    font-size: 13px;
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- Header -->
+  <div class="header">
+    <div class="tag-line">VoqalCloud Architecture · Internal Design Document</div>
+    <h1>Agent-Voice Bridge</h1>
+    <p class="subtitle">Decoupling the agent brain from the voice pipeline so developers can plug in any intelligence — Google ADK, OpenAI Agents SDK, LangChain, CrewAI — without touching the voice stack.</p>
+    <div class="meta">May 2026 · For Sripathi Krishnan and VoqalCloud developer customers</div>
+  </div>
+
+  <!-- Verdict -->
+  <div class="verdict">
+    <div class="verdict-icon">✅</div>
+    <div>
+      <div class="verdict-title">Verdict: Feasible — and the infrastructure already half-exists</div>
+      <div class="verdict-body">Pipecat ships <code>WebsocketLLMService</code>, an abstract base for exactly this pattern. The wire protocol needs one new design (the Agent Bridge Protocol), but Google ADK already exposes an SSE/WebSocket server and OpenAI Agents SDK streams naturally. The hard parts are interruption cancellation, context/history translation, and latency at the seam. All are solvable with clear design decisions documented here.</div>
+    </div>
+  </div>
+
+  <!-- TOC -->
+  <div class="toc">
+    <div class="toc-title">Contents</div>
+    <ol>
+      <li><a href="#pipecat-obligations">1. What Pipecat's LLMService Must Do</a></li>
+      <li><a href="#framework-session">2. Agent Framework Session Abstractions</a></li>
+      <li><a href="#architecture">3. Architecture: The Three-Layer Split</a></li>
+      <li><a href="#protocol">4. The Agent Bridge Protocol (Wire Format)</a></li>
+      <li><a href="#context-bridge">5. Context / History Translation</a></li>
+      <li><a href="#pipecat-impl">6. Implementing AgentBridgeLLMService</a></li>
+      <li><a href="#server-adapters">7. Remote Agent Server Adapters</a></li>
+      <li><a href="#latency">8. Latency Design</a></li>
+      <li><a href="#constraints">9. Developer Constraints & Limitations</a></li>
+      <li><a href="#appendix">Appendix: Frame Reference</a></li>
+    </ol>
+  </div>
+
+
+  <!-- Section 1 -->
+  <h2 id="pipecat-obligations">1. What Pipecat's LLMService Must Do</h2>
+  <div class="audience-pills"><span class="pill pill-architect">Architect</span></div>
+
+  <p>Understanding the obligations of an <code>LLMService</code> is the prerequisite for designing a drop-in replacement. The obligations fall into two categories: frames you must receive and act on, and frames you must emit in the right sequence.</p>
+
+  <h3>Incoming Frames</h3>
+  <table>
+    <tr><th>Frame</th><th>Required Action</th></tr>
+    <tr><td><code>LLMContextFrame</code></td><td>Primary trigger. Contains full conversation context (messages + tools). Run inference, emit response frames.</td></tr>
+    <tr><td><code>LLMRunFrame</code></td><td>Direct "go run now" signal. Re-run inference with current context.</td></tr>
+    <tr><td><code>StartFrame</code></td><td>Initialize: create WebSocket connection, start sequential runner task if needed.</td></tr>
+    <tr><td><code>EndFrame / CancelFrame</code></td><td>Disconnect WebSocket, cancel in-flight tasks.</td></tr>
+    <tr><td><code>InterruptionFrame</code></td><td><strong>Critical for voice:</strong> Cancel all sync function calls and their tasks. Must also abort the remote stream.</td></tr>
+    <tr><td><code>LLMUpdateSettingsFrame</code></td><td>Update runtime settings (temperature, max_tokens, system prompt).</td></tr>
+    <tr><td><code>LLMContextSummaryRequestFrame</code></td><td>Run out-of-band summary inference, emit <code>LLMContextSummaryResultFrame</code>.</td></tr>
+  </table>
+
+  <h3>Required Frame Emission Sequence (One Turn)</h3>
+  <div class="diagram">
+<pre>
+<span class="hl">Receive:</span> LLMContextFrame
+   │
+   ▼
+<span class="hl2">Emit:</span>   LLMFullResponseStartFrame
+   │
+   ├── <span class="hl2">Emit:</span> LLMTextFrame (chunk 1)
+   ├── <span class="hl2">Emit:</span> LLMTextFrame (chunk 2)   ← each text token/word
+   │   ...
+   │
+   │   [if LLM wants to call a tool]
+   ├── <span class="hl3">Emit:</span> FunctionCallsStartedFrame
+   ├── <span class="hl3">Emit:</span> FunctionCallInProgressFrame   ← per tool call
+   │        (handler registered in pipecat executes)
+   ├── <span class="hl3">Emit:</span> FunctionCallResultFrame         ← after handler returns
+   │        (LLM re-invoked automatically by aggregator)
+   │
+   ▼
+<span class="hl2">Emit:</span>   LLMFullResponseEndFrame
+</pre>
+  </div>
+
+  <div class="box box-info">
+    <div class="box-title">The Unwritten Protocol</div>
+    <p>Every LLM service implementation in pipecat wraps the entire inference in <code>LLMFullResponseStartFrame</code> / <code>LLMFullResponseEndFrame</code>. The downstream TTS aggregator depends on this pair to know when to commit audio. If you forget <code>LLMFullResponseEndFrame</code>, the TTS will never speak.</p>
+    <p>Text chunks must be pushed via <code>self._push_llm_text(text)</code> (not directly via <code>push_frame</code>) so that the turn-completion mixin and skip-TTS logic are correctly applied.</p>
+  </div>
+
+  <h3>Tool Call Ownership: The Biggest Design Decision</h3>
+  <p>When a remote agent calls a tool internally (e.g., database lookup), pipecat never sees it — the agent just sends back text. But some tools <em>must</em> be executed by pipecat: hangup, transfer, TTS voice change. This creates three modes:</p>
+
+  <table>
+    <tr><th>Mode</th><th>Who runs tools</th><th>Complexity</th><th>Use When</th></tr>
+    <tr><td><strong>Opaque</strong></td><td>Remote agent only</td><td>Low</td><td>Agent handles all business logic; pipecat only speaks</td></tr>
+    <tr><td><strong>Transparent</strong></td><td>Pipecat only</td><td>High</td><td>Full pipecat tool ecosystem reuse; thin agent</td></tr>
+    <tr><td><strong>Hybrid</strong> (recommended)</td><td>Agent handles business logic; pipecat handles voice-control tools</td><td>Medium</td><td>Most real-world voice agents</td></tr>
+  </table>
+
+
+  <!-- Section 2 -->
+  <h2 id="framework-session">2. Agent Framework Session Abstractions</h2>
+  <div class="audience-pills"><span class="pill pill-architect">Architect</span></div>
+
+  <p>Each framework models conversation state differently. Here's a precise map of what each stores and how to bridge to pipecat's <code>LLMContext</code>.</p>
+
+  <h3>Pipecat LLMContext</h3>
+  <p>LLMContext is a <strong>mutable, in-process object</strong> rebuilt on every turn from the aggregator. It contains the full conversation history in OpenAI message format:</p>
+  <pre><code><span class="comment"># Messages are OpenAI ChatCompletionMessageParam format</span>
+messages = [
+  {<span class="string">"role"</span>: <span class="string">"system"</span>, <span class="string">"content"</span>: <span class="string">"You are a helpful voice assistant"</span>},
+  {<span class="string">"role"</span>: <span class="string">"user"</span>, <span class="string">"content"</span>: <span class="string">"Book me a flight to Tokyo"</span>},
+  {<span class="string">"role"</span>: <span class="string">"assistant"</span>, <span class="string">"content"</span>: None,
+   <span class="string">"tool_calls"</span>: [{<span class="string">"id"</span>: <span class="string">"call_123"</span>, <span class="string">"function"</span>: {<span class="string">"name"</span>: <span class="string">"search_flights"</span>, <span class="string">"arguments"</span>: <span class="string">"{}"</span>}}]},
+  {<span class="string">"role"</span>: <span class="string">"tool"</span>, <span class="string">"tool_call_id"</span>: <span class="string">"call_123"</span>, <span class="string">"content"</span>: <span class="string">"[{flight results}]"</span>},
+  {<span class="string">"role"</span>: <span class="string">"assistant"</span>, <span class="string">"content"</span>: <span class="string">"I found 3 flights..."</span>},
+]</code></pre>
+
+  <h3>Google ADK Session</h3>
+  <p>ADK stores conversation history as an <strong>append-only list of <code>Event</code> objects</strong>. Each event uses Google's <code>Content/Part</code> type (same as Gemini API):</p>
+  <pre><code>session.events = [
+  Event(author=<span class="string">"user"</span>,  content=Content(parts=[Part(text=<span class="string">"Book me a flight to Tokyo"</span>)])),
+  Event(author=<span class="string">"model"</span>, content=Content(parts=[Part(function_call=FunctionCall(
+      name=<span class="string">"search_flights"</span>, args={}, id=<span class="string">"call_123"</span>))])),
+  Event(author=<span class="string">"search_flights"</span>, content=Content(parts=[Part(function_response=FunctionResponse(
+      name=<span class="string">"search_flights"</span>, response={<span class="string">"results"</span>: [...]}, id=<span class="string">"call_123"</span>))])),
+  Event(author=<span class="string">"model"</span>, content=Content(parts=[Part(text=<span class="string">"I found 3 flights..."</span>)])),
+]</code></pre>
+
+  <div class="box box-warn">
+    <div class="box-title">ADK History Translation Problem</div>
+    <p>The ADK event log includes <em>internal</em> tool calls made by sub-agents, routing decisions, and partial streaming events — none of which appear in pipecat's context. If you reconstruct ADK session state from pipecat messages, you lose this metadata. The recommended approach is to treat the ADK server as <strong>authoritative for history</strong> and only send it the latest user message per turn.</p>
+  </div>
+
+  <h3>OpenAI Agents SDK</h3>
+  <p>The SDK tracks conversation in one of two ways:</p>
+  <ul>
+    <li><strong>Client-managed</strong>: A <code>Session</code> object (protocol) stores <code>list[TResponseInputItem]</code> — the same OpenAI Responses API format, close to pipecat's format.</li>
+    <li><strong>Server-managed</strong>: A <code>conversation_id</code> / <code>previous_response_id</code> chain maintained by OpenAI's servers.</li>
+  </ul>
+  <p>For bridge purposes, the client-managed path is easiest: send the full history each time as the <code>input</code> parameter to <code>Runner.run()</code>.</p>
+
+  <h3>LangChain / CrewAI / Others</h3>
+  <p>Most other frameworks accept conversation history as a list of <code>HumanMessage</code> / <code>AIMessage</code> / <code>ToolMessage</code> objects (LangChain) or as plain dicts (CrewAI). These map directly from pipecat's OpenAI-format messages with a simple conversion layer.</p>
+
+  <div class="compare-grid">
+    <div class="compare-card">
+      <h4>Stateless Bridge (Recommended)</h4>
+      <p>Send full conversation history with every request. Server is stateless. Works with all frameworks. Scales horizontally. Slightly more bandwidth.</p>
+      <ul>
+        <li>✅ No session affinity needed</li>
+        <li>✅ Simple server restart recovery</li>
+        <li>✅ Works with all frameworks</li>
+        <li>⚠️ O(n) context per turn</li>
+      </ul>
+    </div>
+    <div class="compare-card">
+      <h4>Stateful Bridge (Performance)</h4>
+      <p>Server maintains session state. Pipecat sends only the new user message each turn. Lower bandwidth, but requires session stickiness.</p>
+      <ul>
+        <li>✅ Lower bandwidth</li>
+        <li>✅ Agent history is authoritative</li>
+        <li>❌ Session affinity required</li>
+        <li>❌ Session recovery on crash</li>
+      </ul>
+    </div>
+  </div>
+
+
+  <!-- Section 3 -->
+  <h2 id="architecture">3. Architecture: The Three-Layer Split</h2>
+  <div class="audience-pills"><span class="pill pill-architect">Architect</span><span class="pill pill-dev">Developer</span></div>
+
+  <div class="diagram">
+<pre>
+┌─────────────────── CUSTOMER INFRASTRUCTURE ──────────────────────┐
+│                                                                    │
+│   ┌─────────────────────────────────────────────────────────┐     │
+│   │              Agent Server (any framework)               │     │
+│   │                                                         │     │
+│   │  ┌──────────────┐   ┌────────────────────────────────┐  │     │
+│   │  │ Your Agent   │   │  Session Store                 │  │     │
+│   │  │              │   │  (in-memory / Redis / DB)      │  │     │
+│   │  │ Google ADK   │   │  session_id → conversation     │  │     │
+│   │  │    - OR -    │   │              tool call state   │  │     │
+│   │  │ OAI Agents   │   │              agent state       │  │     │
+│   │  │    - OR -    │   └────────────────────────────────┘  │     │
+│   │  │  LangChain   │                                        │     │
+│   │  │    - OR -    │   ┌────────────────────────────────┐  │     │
+│   │  │  CrewAI etc  │   │  Agent Bridge Protocol Server  │  │     │
+│   │  └──────────────┘   │  (FastAPI WebSocket endpoint)  │  │     │
+│   │                     └──────────────┬───────────────-─┘  │     │
+│   └──────────────────────────────────--|────────────────────-┘     │
+│                                        │  WebSocket (wss://)       │
+└───────────────────────────────────────-|──────────────────────────-┘
+                                         │
+                              ┌──────────┴──────────┐
+                              │  Agent Bridge       │   ← runs inside pipecat
+                              │  LLM Service        │   AgentBridgeLLMService
+                              │                     │   (subclass of WebsocketLLMService)
+                              └────────┬────────────┘
+                                       │ pipecat frames
+          ┌────────────────────────────┼────────────────────────────┐
+          │            PIPECAT PIPELINE│                            │
+          │                           │                            │
+          │  ┌─────────────┐   ┌──────┴──────┐   ┌─────────────┐  │
+          │  │ STT Service │──▶│ Agent Bridge│──▶│ TTS Service │  │
+          │  │ (Deepgram,  │   │ LLM Service │   │ (Cartesia,  │  │
+          │  │  Whisper…)  │   │             │   │  ElevenLabs)│  │
+          │  └─────────────┘   └─────────────┘   └─────────────┘  │
+          │                                                         │
+          │  ┌────────────────────────────────────────────────────┐ │
+          │  │ Context Aggregator (LLMUserAgg + LLMAssistantAgg) │ │
+          │  └────────────────────────────────────────────────────┘ │
+          └────────────────────────────────────────────────────────-┘
+</pre>
+  </div>
+
+  <p>The pipecat pipeline is completely standard — STT → LLM → TTS. The only new component is <code>AgentBridgeLLMService</code>, which replaces the direct LLM API call with a WebSocket hop to the customer's agent server.</p>
+
+  <p>The agent server is an HTTP/WebSocket endpoint that wraps the customer's chosen framework. VoqalCloud provides adapter libraries for each supported framework (ADK, OpenAI Agents SDK, etc.) to make this trivial to deploy.</p>
+
+
+  <!-- Section 4 -->
+  <h2 id="protocol">4. The Agent Bridge Protocol (Wire Format)</h2>
+  <div class="audience-pills"><span class="pill pill-architect">Architect</span></div>
+
+  <p>The protocol runs over a <strong>persistent WebSocket connection</strong>. One connection per pipecat pipeline session. Each LLM turn is one request-response exchange on that connection.</p>
+
+  <h3>Connection Lifecycle</h3>
+  <pre><code><span class="comment"># Connect at pipeline start</span>
+wss://agent-server/v1/agent?session_id={uuid}&pipeline_id={id}
+
+<span class="comment"># Handshake</span>
+S→C: {<span class="string">"type"</span>: <span class="string">"ready"</span>, <span class="string">"session_id"</span>: <span class="string">"..."</span>, <span class="string">"capabilities"</span>: [<span class="string">"interrupt"</span>, <span class="string">"tools"</span>]}
+
+<span class="comment"># Normal flow: one run per turn</span>
+C→S: {<span class="string">"type"</span>: <span class="string">"run"</span>, ...}
+S→C: {<span class="string">"type"</span>: <span class="string">"stream_start"</span>}
+S→C: {<span class="string">"type"</span>: <span class="string">"text_delta"</span>, ...}  (repeating)
+S→C: {<span class="string">"type"</span>: <span class="string">"stream_end"</span>}
+
+<span class="comment"># Interrupt: pipecat user spoke mid-stream</span>
+C→S: {<span class="string">"type"</span>: <span class="string">"interrupt"</span>}
+S→C: {<span class="string">"type"</span>: <span class="string">"interrupted"</span>}  (server confirms cancellation)
+
+<span class="comment"># Disconnect at pipeline end</span>
+WebSocket close frame</code></pre>
+
+  <h3>Request Message: <code>run</code></h3>
+  <pre><code>{
+  <span class="string">"type"</span>: <span class="string">"run"</span>,
+  <span class="string">"turn_id"</span>: <span class="string">"turn-uuid-123"</span>,       <span class="comment">// for correlation</span>
+
+  <span class="comment">// Strategy A (stateless): send full history every time</span>
+  <span class="string">"messages"</span>: [                        <span class="comment">// OpenAI-format message array</span>
+    {<span class="string">"role"</span>: <span class="string">"system"</span>, <span class="string">"content"</span>: <span class="string">"..."</span>},
+    {<span class="string">"role"</span>: <span class="string">"user"</span>, <span class="string">"content"</span>: <span class="string">"Book me a flight"</span>},
+    {<span class="string">"role"</span>: <span class="string">"assistant"</span>, <span class="string">"content"</span>: <span class="string">"Sure! Where to?"</span>},
+    {<span class="string">"role"</span>: <span class="string">"user"</span>, <span class="string">"content"</span>: <span class="string">"Tokyo, next Tuesday"</span>}
+  ],
+
+  <span class="comment">// Optional: override agent settings</span>
+  <span class="string">"settings"</span>: {
+    <span class="string">"system_instruction"</span>: <span class="string">"..."</span>,     <span class="comment">// if set, overrides agent's default</span>
+    <span class="string">"max_tokens"</span>: <span class="number">512</span>,
+    <span class="string">"temperature"</span>: <span class="number">0.7</span>
+  },
+
+  <span class="comment">// Pipecat-side tools the agent can invoke (hybrid mode)</span>
+  <span class="string">"pipecat_tools"</span>: [                  <span class="comment">// OpenAI function schema format</span>
+    {<span class="string">"name"</span>: <span class="string">"hangup"</span>, <span class="string">"description"</span>: <span class="string">"..."</span>, <span class="string">"parameters"</span>: {}},
+    {<span class="string">"name"</span>: <span class="string">"transfer"</span>, <span class="string">"description"</span>: <span class="string">"..."</span>, <span class="string">"parameters"</span>: {<span class="string">"destination"</span>: <span class="string">"..."</span>}}
+  ]
+}</code></pre>
+
+  <h3>Response Event Stream</h3>
+  <pre><code><span class="comment">// 1. Stream begins</span>
+{<span class="string">"type"</span>: <span class="string">"stream_start"</span>, <span class="string">"turn_id"</span>: <span class="string">"turn-uuid-123"</span>}
+
+<span class="comment">// 2. Text chunks (emit one per LLM token or word boundary)</span>
+{<span class="string">"type"</span>: <span class="string">"text_delta"</span>, <span class="string">"text"</span>: <span class="string">"I found"</span>}
+{<span class="string">"type"</span>: <span class="string">"text_delta"</span>, <span class="string">"text"</span>: <span class="string">" three flights"</span>}
+
+<span class="comment">// 3a. [Hybrid mode] Agent wants pipecat to execute a tool</span>
+{<span class="string">"type"</span>: <span class="string">"tool_call"</span>,
+ <span class="string">"id"</span>: <span class="string">"call_456"</span>,
+ <span class="string">"name"</span>: <span class="string">"transfer"</span>,
+ <span class="string">"arguments"</span>: {<span class="string">"destination"</span>: <span class="string">"sales-queue"</span>}}
+
+<span class="comment">// 3b. [Hybrid mode] Pipecat sends tool result back</span>
+<span class="comment">// C→S: {"type": "tool_result", "id": "call_456", "result": {"status": "ok"}}</span>
+
+<span class="comment">// 4. End of stream</span>
+{<span class="string">"type"</span>: <span class="string">"stream_end"</span>,
+ <span class="string">"turn_id"</span>: <span class="string">"turn-uuid-123"</span>,
+ <span class="string">"usage"</span>: {<span class="string">"input_tokens"</span>: <span class="number">312</span>, <span class="string">"output_tokens"</span>: <span class="number">47</span>}}
+
+<span class="comment">// Error path</span>
+{<span class="string">"type"</span>: <span class="string">"error"</span>, <span class="string">"code"</span>: <span class="string">"agent_timeout"</span>, <span class="string">"message"</span>: <span class="string">"..."</span>, <span class="string">"fatal"</span>: false}</code></pre>
+
+  <h3>Interrupt Protocol</h3>
+  <pre><code><span class="comment">// Pipecat detects user speech → sends interrupt immediately</span>
+C→S: {<span class="string">"type"</span>: <span class="string">"interrupt"</span>, <span class="string">"turn_id"</span>: <span class="string">"turn-uuid-123"</span>}
+
+<span class="comment">// Server MUST:</span>
+<span class="comment">// 1. Stop generating immediately</span>
+<span class="comment">// 2. Cancel any in-flight tool calls</span>
+<span class="comment">// 3. NOT append the partial response to session history</span>
+<span class="comment">// 4. Confirm cancellation</span>
+S→C: {<span class="string">"type"</span>: <span class="string">"interrupted"</span>, <span class="string">"turn_id"</span>: <span class="string">"turn-uuid-123"</span>}
+
+<span class="comment">// Server is now idle, waiting for next "run"</span></code></pre>
+
+  <div class="box box-danger">
+    <div class="box-title">Critical: Interrupt Must Be Fast</div>
+    <p>From when pipecat sends <code>{"type":"interrupt"}</code> to when TTS audio stops, the latency budget is ~100ms. The server must cancel its LLM stream immediately (not wait for the current token). Google ADK and OpenAI Agents SDK both support async cancellation but you must wire it correctly — cancelling the Python <code>asyncio.Task</code> running <code>runner.run_async()</code> is sufficient for most frameworks.</p>
+  </div>
+
+
+  <!-- Section 5 -->
+  <h2 id="context-bridge">5. Context / History Translation</h2>
+  <div class="audience-pills"><span class="pill pill-architect">Architect</span></div>
+
+  <p>This is the most subtle part of the design. Pipecat's <code>LLMContext</code> and each framework's session format overlap significantly but not perfectly.</p>
+
+  <h3>Translation Map</h3>
+  <table>
+    <tr><th>OpenAI Format (Pipecat)</th><th>Google ADK</th><th>OAI Agents SDK</th><th>LangChain</th></tr>
+    <tr>
+      <td><code>{"role":"user","content":"Hi"}</code></td>
+      <td><code>Event(author="user", content=Content(parts=[Part(text="Hi")]))</code></td>
+      <td><code>{"role":"user","content":[{"type":"input_text","text":"Hi"}]}</code></td>
+      <td><code>HumanMessage(content="Hi")</code></td>
+    </tr>
+    <tr>
+      <td><code>{"role":"assistant","content":"Hello!"}</code></td>
+      <td><code>Event(author="model", content=Content(parts=[Part(text="Hello!")]))</code></td>
+      <td><code>{"role":"assistant","content":[{"type":"output_text","text":"Hello!"}]}</code></td>
+      <td><code>AIMessage(content="Hello!")</code></td>
+    </tr>
+    <tr>
+      <td><code>{"role":"assistant","tool_calls":[{"id":"c1","function":{"name":"f","arguments":"{}"}}]}</code></td>
+      <td><code>Event(author="model", content=Content(parts=[Part(function_call=FunctionCall(...))]))</code></td>
+      <td><code>{"type":"function_call","id":"c1","name":"f","arguments":"{}"}</code></td>
+      <td><code>AIMessage(tool_calls=[ToolCall(...)])</code></td>
+    </tr>
+    <tr>
+      <td><code>{"role":"tool","tool_call_id":"c1","content":"result"}</code></td>
+      <td><code>Event(author="f", content=Content(parts=[Part(function_response=FunctionResponse(...))]))</code></td>
+      <td><code>{"type":"function_call_output","call_id":"c1","output":"result"}</code></td>
+      <td><code>ToolMessage(tool_call_id="c1", content="result")</code></td>
+    </tr>
+  </table>
+
+  <h3>The "Last Message Only" Strategy (Stateful Server)</h3>
+  <p>If the remote agent server maintains session state (e.g., ADK session or OpenAI conversation_id), you should only send the new user message, not the full history. The server tracks the rest.</p>
+
+  <p>This requires the bridge to:</p>
+  <ol>
+    <li>Track which messages have already been sent (by count or hash)</li>
+    <li>Extract only the delta (new messages since last turn)</li>
+    <li>Send just the delta to the server</li>
+  </ol>
+
+  <pre><code><span class="comment"># In AgentBridgeLLMService (stateful mode)</span>
+<span class="keyword">def</span> <span class="fn">_get_new_messages</span>(self, context: LLMContext) -> list[dict]:
+    messages = context.get_messages()
+    <span class="comment"># Track how many we've sent; only send the tail</span>
+    new_from = self._sent_message_count
+    self._sent_message_count = len(messages)
+    <span class="keyword">return</span> messages[new_from:]</code></pre>
+
+  <div class="box box-warn">
+    <div class="box-title">Context Drift Risk</div>
+    <p>If pipecat's context and the server's session get out of sync (e.g., after an interruption that partially appended a response), you will get hallucinated tool call references or nonsensical follow-ups. The safest recovery is a <code>{"type":"reset","messages":[...]}</code> message that lets the server rebuild from the full context. Build this as a fallback from day one.</p>
+  </div>
+
+  <h3>System Instruction Precedence</h3>
+  <p>Both pipecat (via <code>LLMSettings.system_instruction</code>) and the agent framework (the agent's own instructions/persona) may define a system prompt. Establish a clear precedence rule:</p>
+  <ol>
+    <li><strong>Agent's persona</strong> (defined in framework config) — foundational identity</li>
+    <li><strong>VoqalCloud base instructions</strong> — turn completion markers if enabled, voice output constraints</li>
+    <li><strong>Runtime override</strong> (from <code>LLMUpdateSettingsFrame</code>) — per-call overrides, dynamic context</li>
+  </ol>
+  <p>The bridge protocol's <code>settings.system_instruction</code> field should only carry the runtime override; the agent server merges it with the agent's own persona.</p>
+
+
+  <!-- Section 6 -->
+  <h2 id="pipecat-impl">6. Implementing AgentBridgeLLMService</h2>
+  <div class="audience-pills"><span class="pill pill-architect">Architect</span></div>
+
+  <p><code>AgentBridgeLLMService</code> extends <code>WebsocketLLMService</code>. The heavy lifting (reconnection, connection lifecycle, concurrent inference management) is already done. We implement three things: connect, send, receive.</p>
+
+  <pre><code><span class="keyword">class</span> <span class="type">AgentBridgeLLMService</span>(WebsocketLLMService):
+    <span class="string">"""Bridges pipecat to a remote Agent Bridge Protocol server."""</span>
+
+    <span class="keyword">def</span> <span class="fn">__init__</span>(self, *, url: str, session_id: str, api_key: str | None = None, **kwargs):
+        <span class="keyword">super</span>().__init__(**kwargs)
+        self._url = url
+        self._session_id = session_id
+        self._api_key = api_key
+        self._current_turn_id: str | None = None
+        self._interrupted = asyncio.Event()
+
+    <span class="comment"># ── Connection ────────────────────────────────────────────────</span>
+
+    <span class="keyword">async def</span> <span class="fn">_connect_websocket</span>(self):
+        headers = {<span class="string">"Authorization"</span>: f<span class="string">"Bearer {self._api_key}"</span>} <span class="keyword">if</span> self._api_key <span class="keyword">else</span> {}
+        self._websocket = <span class="keyword">await</span> websockets.connect(
+            f<span class="string">"{self._url}?session_id={self._session_id}"</span>, extra_headers=headers
+        )
+        ready = <span class="keyword">await</span> self._ws_recv()
+        <span class="keyword">assert</span> ready[<span class="string">"type"</span>] == <span class="string">"ready"</span>
+
+    <span class="keyword">async def</span> <span class="fn">_disconnect_websocket</span>(self):
+        <span class="keyword">if</span> self._websocket:
+            <span class="keyword">await</span> self._websocket.close()
+
+    <span class="comment"># ── Main inference ────────────────────────────────────────────</span>
+
+    <span class="keyword">async def</span> <span class="fn">process_frame</span>(self, frame: Frame, direction: FrameDirection):
+        <span class="keyword">await super</span>().process_frame(frame, direction)
+        <span class="keyword">if</span> isinstance(frame, LLMContextFrame):
+            <span class="keyword">try</span>:
+                <span class="keyword">await</span> self.push_frame(LLMFullResponseStartFrame())
+                <span class="keyword">await</span> self._process_context(frame.context)
+            <span class="keyword">except</span> Exception <span class="keyword">as</span> e:
+                <span class="keyword">await</span> self.push_error(str(e), exception=e, fatal=<span class="keyword">False</span>)
+            <span class="keyword">finally</span>:
+                <span class="keyword">await</span> self.push_frame(LLMFullResponseEndFrame())
+        <span class="keyword">else</span>:
+            <span class="keyword">await</span> self.push_frame(frame, direction)
+
+    <span class="keyword">async def</span> <span class="fn">_process_context</span>(self, context: LLMContext):
+        self._current_turn_id = str(uuid.uuid4())
+        self._interrupted.clear()
+
+        <span class="comment"># Build and send the run request</span>
+        request = {
+            <span class="string">"type"</span>: <span class="string">"run"</span>,
+            <span class="string">"turn_id"</span>: self._current_turn_id,
+            <span class="string">"messages"</span>: context.get_messages(),
+            <span class="string">"settings"</span>: {<span class="string">"system_instruction"</span>: self._settings.system_instruction},
+            <span class="string">"pipecat_tools"</span>: self._get_pipecat_tool_schemas(),
+        }
+        <span class="keyword">await</span> self._ws_send(request)
+
+        <span class="comment"># Consume the event stream</span>
+        pending_tool_calls: list[FunctionCallFromLLM] = []
+        <span class="keyword">while True</span>:
+            event = <span class="keyword">await</span> self._ws_recv()
+            etype = event[<span class="string">"type"</span>]
+
+            <span class="keyword">if</span> etype == <span class="string">"text_delta"</span>:
+                <span class="keyword">await</span> self._push_llm_text(event[<span class="string">"text"</span>])
+
+            <span class="keyword">elif</span> etype == <span class="string">"tool_call"</span>:
+                pending_tool_calls.append(FunctionCallFromLLM(
+                    context=context,
+                    tool_call_id=event[<span class="string">"id"</span>],
+                    function_name=event[<span class="string">"name"</span>],
+                    arguments=json.loads(event.get(<span class="string">"arguments"</span>, <span class="string">"{}"</span>)),
+                ))
+
+            <span class="keyword">elif</span> etype == <span class="string">"stream_end"</span>:
+                <span class="keyword">if</span> pending_tool_calls:
+                    <span class="keyword">await</span> self.run_function_calls(pending_tool_calls)
+                <span class="keyword">break</span>
+
+            <span class="keyword">elif</span> etype == <span class="string">"error"</span>:
+                <span class="keyword">await</span> self.push_error(event[<span class="string">"message"</span>], fatal=event.get(<span class="string">"fatal"</span>, <span class="keyword">False</span>))
+                <span class="keyword">break</span>
+
+    <span class="comment"># ── Interruption ──────────────────────────────────────────────</span>
+
+    <span class="keyword">async def</span> <span class="fn">_handle_interruptions</span>(self, frame: InterruptionFrame):
+        <span class="keyword">await super</span>()._handle_interruptions(frame)
+        <span class="keyword">if</span> self._current_turn_id:
+            <span class="keyword">await</span> self._ws_send({
+                <span class="string">"type"</span>: <span class="string">"interrupt"</span>,
+                <span class="string">"turn_id"</span>: self._current_turn_id
+            })
+            <span class="comment"># Don't wait for "interrupted" ack — fire and forget</span></code></pre>
+
+
+  <!-- Section 7 -->
+  <h2 id="server-adapters">7. Remote Agent Server Adapters</h2>
+  <div class="audience-pills"><span class="pill pill-dev">Developer</span></div>
+
+  <p>VoqalCloud provides adapter libraries that turn any agent framework into an Agent Bridge Protocol-compliant WebSocket server. Below is the structure for each major framework.</p>
+
+  <h3>Google ADK Adapter</h3>
+  <pre><code><span class="keyword">from</span> fastapi <span class="keyword">import</span> FastAPI, WebSocket
+<span class="keyword">from</span> google.adk.runners <span class="keyword">import</span> Runner
+<span class="keyword">from</span> google.adk.sessions <span class="keyword">import</span> InMemorySessionService
+<span class="keyword">from</span> voqalcloud.bridges.adk <span class="keyword">import</span> AgentBridgeADKAdapter
+
+app = FastAPI()
+session_service = InMemorySessionService()
+
+<span class="comment"># Your ADK agent definition</span>
+runner = Runner(agent=your_root_agent, session_service=session_service, ...)
+
+adapter = AgentBridgeADKAdapter(runner=runner, session_service=session_service)
+
+@app.websocket(<span class="string">"/v1/agent"</span>)
+<span class="keyword">async def</span> <span class="fn">agent_ws</span>(ws: WebSocket, session_id: str):
+    <span class="keyword">await</span> adapter.handle(ws, session_id)
+
+<span class="comment"># AgentBridgeADKAdapter internally does:
+# 1. Receive "run" message → extract messages (last user message for stateful, or full history)
+# 2. Convert messages to ADK Content/Part format
+# 3. Call runner.run_async(user_id, session_id, new_message, run_config=RunConfig(streaming_mode=SSE))
+# 4. For each Event from the generator:
+#    - partial text event → send {"type":"text_delta","text":...}
+#    - function_call event → if in pipecat_tools: send {"type":"tool_call",...}
+#                          → else: execute internally, inject result, continue
+# 5. End of generator → send {"type":"stream_end"}
+# 6. On "interrupt" → cancel the asyncio.Task running run_async</span></code></pre>
+
+  <h3>OpenAI Agents SDK Adapter</h3>
+  <pre><code><span class="keyword">from</span> agents <span class="keyword">import</span> Agent, Runner
+<span class="keyword">from</span> voqalcloud.bridges.openai_agents <span class="keyword">import</span> AgentBridgeOAIAdapter
+
+<span class="comment"># Your agent definition</span>
+agent = Agent(name=<span class="string">"Support Bot"</span>, instructions=<span class="string">"..."</span>, tools=[...])
+adapter = AgentBridgeOAIAdapter(agent=agent)
+
+@app.websocket(<span class="string">"/v1/agent"</span>)
+<span class="keyword">async def</span> <span class="fn">agent_ws</span>(ws: WebSocket, session_id: str):
+    <span class="keyword">await</span> adapter.handle(ws, session_id)
+
+<span class="comment"># AgentBridgeOAIAdapter internally does:
+# 1. Receive "run" → convert messages to TResponseInputItem format
+# 2. Call Runner.run_streamed(agent, input=messages)
+# 3. async for event in streamed_result.stream_events():
+#    - RawResponsesStreamEvent (text delta) → {"type":"text_delta","text":...}
+#    - RunItemStreamEvent(name="tool_called") → if pipecat_tool: {"type":"tool_call",...}
+#                                             → else: allow SDK to handle it
+# 4. stream_events() exhausted → {"type":"stream_end"}
+# 5. On "interrupt" → cancel the streaming task</span></code></pre>
+
+  <h3>Generic / LangChain Adapter</h3>
+  <pre><code><span class="keyword">from</span> langchain.agents <span class="keyword">import</span> AgentExecutor
+<span class="keyword">from</span> voqalcloud.bridges.langchain <span class="keyword">import</span> AgentBridgeLCAdapter
+
+executor = AgentExecutor(agent=your_lc_agent, tools=[...])
+adapter = AgentBridgeLCAdapter(executor=executor)
+
+<span class="comment"># Converts pipecat OpenAI messages → LangChain HumanMessage/AIMessage/ToolMessage
+# Uses executor.astream() for streaming text</span></code></pre>
+
+
+  <!-- Section 8 -->
+  <h2 id="latency">8. Latency Design</h2>
+  <div class="audience-pills"><span class="pill pill-architect">Architect</span><span class="pill pill-dev">Developer</span></div>
+
+  <p>Voice agents have an unforgiving latency budget. The user expects a response within ~1.5s of finishing speaking. Every ms at the agent bridge seam must be budgeted carefully.</p>
+
+  <h3>Latency Budget (Realistic Estimates)</h3>
+  <div style="margin: 20px 0;">
+    <div class="latency-bar">
+      <div class="latency-label">STT (Deepgram Nova-3 streaming)</div>
+      <div class="latency-track"><div class="latency-fill" style="width:10%;background:#818cf8;"></div></div>
+      <div class="latency-value">~50ms</div>
+    </div>
+    <div class="latency-bar">
+      <div class="latency-label">Pipecat frame processing</div>
+      <div class="latency-track"><div class="latency-fill" style="width:2%;background:#818cf8;"></div></div>
+      <div class="latency-value">~5ms</div>
+    </div>
+    <div class="latency-bar">
+      <div class="latency-label">WebSocket hop (same region)</div>
+      <div class="latency-track"><div class="latency-fill" style="width:4%;background:#f59e0b;"></div></div>
+      <div class="latency-value">~10ms</div>
+    </div>
+    <div class="latency-bar">
+      <div class="latency-label">Agent server processing (before streaming)</div>
+      <div class="latency-track"><div class="latency-fill" style="width:20%;background:#f59e0b;"></div></div>
+      <div class="latency-value">~50ms</div>
+    </div>
+    <div class="latency-bar">
+      <div class="latency-label">LLM Time-to-First-Token</div>
+      <div class="latency-track"><div class="latency-fill" style="width:60%;background:#ef4444;"></div></div>
+      <div class="latency-value">~400-700ms</div>
+    </div>
+    <div class="latency-bar">
+      <div class="latency-label">First text_delta → TTS → first audio</div>
+      <div class="latency-track"><div class="latency-fill" style="width:40%;background:#ef4444;"></div></div>
+      <div class="latency-value">~200-400ms</div>
+    </div>
+  </div>
+  <p style="font-size:13px;color:var(--text-dim);">Total before first audio: ~720ms–1200ms, dominated by LLM TTFT. Adding the bridge WebSocket hop adds only ~10-20ms. This is acceptable.</p>
+
+  <h3>Design Rules for Low Latency</h3>
+
+  <h4>Rule 1: Pre-connect the WebSocket</h4>
+  <p>Connect the WebSocket on <code>StartFrame</code> (pipeline startup), not on the first LLM request. The pipecat pipeline starts before any user speaks. Use the warm-up time.</p>
+
+  <h4>Rule 2: Stream Tokens Immediately, Don't Buffer</h4>
+  <p>The server must emit <code>text_delta</code> events for every token, not buffer a complete sentence. TTS (Cartesia, ElevenLabs) can begin generating audio from 10-15 characters. Every extra character buffered on the server side delays first audio by ~5ms.</p>
+
+  <h4>Rule 3: Co-locate the Agent Server with the LLM Provider</h4>
+  <p>The biggest latency source is LLM TTFT. If you're using OpenAI's API, run the agent server in Azure East US (OpenAI's primary region). If using Gemini, use GCP us-central1. The bridge WebSocket hop is small; the LLM API hop is large.</p>
+
+  <h4>Rule 4: Keep the Agent Server Warm</h4>
+  <p>Cold start on a serverless Python container adds 500ms-2s. Use long-running containers (Cloud Run with min-instances=1, or ECS, or Kubernetes). The pipecat server also stays warm — the WebSocket connection carries the lifecycle signal.</p>
+
+  <h4>Rule 5: Avoid Tool-Call Round Trips in the Hot Path</h4>
+  <p>Each tool call in hybrid mode requires a round trip: <code>server→pipecat→server</code>. This is 20-40ms RTT. Agent tools that must return before the LLM continues (e.g., "lookup customer name") should be executed <em>on the agent server side</em>, not delegated to pipecat. Only delegate tools that need pipecat state (hangup, transfer, audio control).</p>
+
+  <h4>Rule 6: Use Interruption to Cancel Tool Calls Too</h4>
+  <p>If the agent is mid-tool-call when an interruption arrives, the server must cancel the tool call execution (not just the LLM stream). For long-running async tools, implement cancellation via <code>asyncio.Task.cancel()</code>. Don't wait for the tool to finish — cancel immediately.</p>
+
+  <div class="box box-success">
+    <div class="box-title">Latency Target</div>
+    <p>With same-region co-location and proper streaming: the bridge adds &lt;20ms total. Time-to-first-audio remains dominated by LLM TTFT (400-700ms for most models), which is identical to what you'd get with direct LLM integration. The bridge is not a meaningful latency disadvantage.</p>
+  </div>
+
+
+  <!-- Section 9 -->
+  <h2 id="constraints">9. Developer Constraints &amp; Limitations</h2>
+  <div class="audience-pills"><span class="pill pill-dev">Developer</span><span class="pill pill-warning">Important</span></div>
+
+  <p>This section is written for developers integrating their agents with VoqalCloud. These are real constraints you must design around, not suggestions.</p>
+
+  <ul class="constraint-list">
+    <li>
+      <span class="constraint-badge badge-hard">Hard</span>
+      <div>
+        <strong>Your agent must support async streaming.</strong> Synchronous agents (those that return a complete response, not a stream) will produce poor voice UX — the user hears nothing until the full response is ready. All supported frameworks (ADK, OpenAI Agents, LangChain) have streaming APIs. You must use them. A blocking <code>agent.run()</code> call behind this WebSocket will cause noticeable pauses.
+      </div>
+    </li>
+    <li>
+      <span class="constraint-badge badge-hard">Hard</span>
+      <div>
+        <strong>Your agent must handle abrupt cancellation.</strong> When a user interrupts the bot mid-sentence, your agent's current invocation is cancelled. Any state mutations your agent has already made (database writes, API calls) will NOT be rolled back — they happened before the cancel signal. If your agent writes state mid-response (e.g., "I've sent the email" then <em>sends the email</em> in a tool call), the action may have already executed when the response is cancelled. Design for idempotency or defer side effects to the end of a turn.
+      </div>
+    </li>
+    <li>
+      <span class="constraint-badge badge-hard">Hard</span>
+      <div>
+        <strong>Context is owned by pipecat, not your agent.</strong> Pipecat's context aggregator is the source of truth for conversation history. If your agent framework maintains its own session state (ADK's <code>session.events</code>), it may diverge from pipecat's view after interruptions or errors. You must either (a) use stateless mode and reconstruct from pipecat's context each turn, or (b) implement a reconciliation protocol. Option (a) is strongly recommended for most use cases.
+      </div>
+    </li>
+    <li>
+      <span class="constraint-badge badge-medium">Medium</span>
+      <div>
+        <strong>Voice-appropriate response length.</strong> LLM responses appropriate for text (bullet lists, code blocks, long paragraphs) are wrong for voice. Your agent's system prompt must constrain response length and format. VoqalCloud can inject base voice instructions, but your agent's persona instructions take precedence if they conflict. Design your agent's system prompt for spoken output from day one.
+      </div>
+    </li>
+    <li>
+      <span class="constraint-badge badge-medium">Medium</span>
+      <div>
+        <strong>Tool call latency compounds.</strong> Each tool call your agent makes (regardless of whether it's handled on the agent side or by pipecat) adds LLM inference latency for the follow-up response. A chain of 3 tool calls can add 1-2 seconds before the user hears a response. Prefer batched lookups over sequential tool calls for time-sensitive paths.
+      </div>
+    </li>
+    <li>
+      <span class="constraint-badge badge-medium">Medium</span>
+      <div>
+        <strong>Multi-agent handoffs are transparent to pipecat.</strong> If your agent uses sub-agents or handoffs (ADK's <code>transfer_to_agent</code>, OAI Agents' handoffs), pipecat doesn't know which sub-agent is speaking. Voice indicators (tone, pacing) are consistent — there's no built-in mechanism to switch TTS voice when a handoff occurs. If you need voice persona switching on handoff, you must emit a custom tool call to pipecat (hybrid mode).
+      </div>
+    </li>
+    <li>
+      <span class="constraint-badge badge-medium">Medium</span>
+      <div>
+        <strong>Pipecat function handlers run in the pipeline, not the agent server.</strong> In hybrid mode, when your agent emits a <code>tool_call</code> for pipecat to execute, the handler registered via <code>llm.register_function()</code> runs inside the pipecat process. This handler has access to pipecat state (transport, context) but NOT to your agent server's state or databases. Keep pipecat-side handlers focused on voice control (hangup, transfer, audio) and let the agent handle business logic.
+      </div>
+    </li>
+    <li>
+      <span class="constraint-badge badge-soft">Soft</span>
+      <div>
+        <strong>Debugging is harder.</strong> The full trace of a voice turn now spans two processes: pipecat and the agent server. Without distributed tracing (correlation via <code>turn_id</code>), diagnosing latency or correctness issues is painful. Emit <code>turn_id</code> in all log lines on both sides from day one.
+      </div>
+    </li>
+    <li>
+      <span class="constraint-badge badge-soft">Soft</span>
+      <div>
+        <strong>The bridge adds a network hop, which affects local development.</strong> In production the agent server is co-located (low RTT). Locally, running the agent server as a separate process on the same machine adds negligible latency, but adds operational complexity. VoqalCloud should provide a <code>voqal dev</code> CLI command that starts both the pipecat pipeline and the agent server together.
+      </div>
+    </li>
+  </ul>
+
+  <h3>What the Bridge Does NOT Limit</h3>
+  <p>These capabilities are <strong>fully preserved</strong> through the bridge:</p>
+  <ul>
+    <li>Any LLM provider (OpenAI, Gemini, Claude, Llama, Mistral) — the agent server talks to whatever LLM you choose</li>
+    <li>Any agent pattern (ReAct, plan-and-execute, multi-agent, RAG)</li>
+    <li>Any memory system (vector DB, Redis, SQL) — lives in the agent server</li>
+    <li>Any tool ecosystem — agent-side tools are invisible to pipecat</li>
+    <li>Pipecat's full STT/TTS/transport ecosystem</li>
+    <li>Pipecat's interruption handling, VAD, turn completion detection</li>
+    <li>All pipecat observability (metrics, tracing, RTVI)</li>
+  </ul>
+
+
+  <hr class="section-divider">
+
+  <!-- Appendix -->
+  <h2 id="appendix">Appendix: LLMService Frame Reference</h2>
+  <div class="audience-pills"><span class="pill pill-architect">Architect</span></div>
+
+  <table>
+    <tr><th>Direction</th><th>Frame</th><th>Purpose</th></tr>
+    <tr><td>IN</td><td><code>LLMContextFrame</code></td><td>Trigger inference. Contains full LLMContext.</td></tr>
+    <tr><td>IN</td><td><code>LLMRunFrame</code></td><td>Re-run inference with current context (e.g., after tool result).</td></tr>
+    <tr><td>IN</td><td><code>InterruptionFrame</code></td><td>User spoke. Cancel sync tools; send interrupt to remote agent.</td></tr>
+    <tr><td>IN</td><td><code>StartFrame</code></td><td>Pipeline starting. Connect WebSocket.</td></tr>
+    <tr><td>IN</td><td><code>EndFrame / CancelFrame</code></td><td>Pipeline ending/cancelled. Close WebSocket.</td></tr>
+    <tr><td>IN</td><td><code>LLMUpdateSettingsFrame</code></td><td>Runtime settings update (temperature, max_tokens, etc.).</td></tr>
+    <tr><td>IN</td><td><code>LLMContextSummaryRequestFrame</code></td><td>Generate context summary via out-of-band inference.</td></tr>
+    <tr><td>OUT</td><td><code>LLMFullResponseStartFrame</code></td><td>Begin of response. TTS aggregator listens for this.</td></tr>
+    <tr><td>OUT</td><td><code>LLMTextFrame</code></td><td>Text token/chunk. May have <code>skip_tts=True</code> for control markers.</td></tr>
+    <tr><td>OUT</td><td><code>LLMFullResponseEndFrame</code></td><td>End of response. TTS aggregator commits audio queue.</td></tr>
+    <tr><td>OUT</td><td><code>FunctionCallsStartedFrame</code></td><td>Announce tool calls to observers. User-visible only.</td></tr>
+    <tr><td>OUT</td><td><code>FunctionCallInProgressFrame</code></td><td>Per tool call. Signals context aggregator to prepare for result.</td></tr>
+    <tr><td>OUT</td><td><code>FunctionCallResultFrame</code></td><td>Tool result. Triggers LLM re-invocation via aggregator.</td></tr>
+    <tr><td>OUT</td><td><code>FunctionCallCancelFrame</code></td><td>Tool call was cancelled (e.g., via interruption).</td></tr>
+    <tr><td>OUT</td><td><code>LLMContextSummaryResultFrame</code></td><td>Response to summarization request. Broadcast to all aggregators.</td></tr>
+    <tr><td>OUT</td><td><code>ErrorFrame</code></td><td>Non-fatal or fatal error. Propagated upstream for handling.</td></tr>
+  </table>
+
+  <h3>Key Invariants</h3>
+  <ol>
+    <li><code>LLMFullResponseStartFrame</code> and <code>LLMFullResponseEndFrame</code> must be emitted as a pair, even on error. Use <code>try/finally</code>.</li>
+    <li>Text must be pushed via <code>self._push_llm_text(text)</code>, not <code>push_frame(LLMTextFrame(text))</code> directly, to respect turn-completion and skip-TTS settings.</li>
+    <li>Function calls must go through <code>self.run_function_calls(calls)</code>. Do not emit <code>FunctionCallInProgressFrame</code> or <code>FunctionCallResultFrame</code> manually.</li>
+    <li>All downstream frame pushes must use <code>await self.push_frame(frame)</code>. Never push from a thread; always from an async context.</li>
+    <li>The <code>InterruptionFrame</code> must be <em>passed through</em> downstream (via <code>await super().process_frame(frame, direction)</code>) so downstream processors (TTS, output transport) also get the signal.</li>
+  </ol>
+
+  <footer>
+    <p>VoqalCloud internal design document · Author: Sripathi Krishnan · Generated with Claude Code</p>
+    <p style="margin-top:6px;">Frameworks researched: pipecat 0.0.104+, Google ADK Python (2025), OpenAI Agents SDK Python, LangChain, CrewAI.</p>
+  </footer>
+
+</div>
+</body>
+</html>
